@@ -198,8 +198,8 @@ int main() {
     sycl::free(P, gpuQueue);
   } catch (sycl::exception &e) {
     /* handle SYCL exception */
-    //std::cout << e.what() << std::endl;
-    //return 1;
+    std::cout << e.what() << std::endl;
+    return 1;
   }
 
   return 0;
