@@ -154,9 +154,8 @@ int main() {
               sycl::id<1> tid = sycl::id<1>(0);
               lat(ncache_lines, P, dummy, d_cycles, tid);
             });
-          });
+          }).wait();
         }
-        gpuQueue.wait();
         STOP_PROFILING(&profile, "p");
 
         // Bring the cycle count back from the device
