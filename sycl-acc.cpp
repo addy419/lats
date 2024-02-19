@@ -151,8 +151,8 @@ int main() {
         for (size_t i = 0; i < NOUTER_ITERS; ++i) {
           gpuQueue.submit([&](sycl::handler &cgh) {
             sycl::accessor acc_P {P, cgh, sycl::read_write};
-            sycl::accessor acc_dummy {P, cgh, sycl::read_write};
-            sycl::accessor acc_d_cycles {P, cgh, sycl::read_write};
+            sycl::accessor acc_dummy {dummy, cgh, sycl::read_write};
+            sycl::accessor acc_d_cycles {d_cycles, cgh, sycl::read_write};
 
             cgh.single_task([=]() {
               sycl::id<1> tid = sycl::id<1>(0);
