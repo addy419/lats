@@ -1,6 +1,6 @@
+#include "profiler.h"
 #include <iostream>
 #include <sycl/sycl.hpp>
-#include "profiler.h"
 
 #define KiB 1024
 #define MiB (KiB * KiB)
@@ -81,8 +81,6 @@ void lat(const size_t ncache_lines, char *P, char *dummy, long long int *cycles,
 #endif
 }
 
-//void make_ring(const size_t ncache_lines, const size_t as, const size_t st,
-//              char *P, sycl::id<1> tid) {
 void make_ring(const size_t ncache_lines, const size_t as, const size_t st,
                char *P, sycl::id<1> tid) {
   const size_t gid = tid[0];
@@ -97,7 +95,6 @@ void make_ring(const size_t ncache_lines, const size_t as, const size_t st,
         &P[((i + st) * CACHE_LINE_LENGTH) % as];
   }
 }
-
 
 int main() {
 
@@ -122,8 +119,10 @@ int main() {
     FILE *nfp = fopen("/dev/null", "a");
     FILE *fp = fopen("lat.csv", "a");
 
-    sycl::buffer<long long int, 1> d_cycles(sycl::range<1>(sizeof(long long int)));
-    sycl::buffer<long long int, 1> d_cycles_dummy(sycl::range<1>(sizeof(long long int)));
+    sycl::buffer<long long int, 1> d_cycles(
+        sycl::range<1>(sizeof(long long int)));
+    sycl::buffer<long long int, 1> d_cycles_dummy(
+        sycl::range<1>(sizeof(long long int)));
 
     for (size_t st = STRIDE_START; st <= STRIDE_END; ++st) {
       for (size_t as = ALLOCATION_START; as <= ALLOCATION_END; as *= 2L) {
@@ -132,7 +131,7 @@ int main() {
 
 #if defined(MEM_LD_LATENCY)
         gpuQueue.submit([&](sycl::handler &cgh) {
-          sycl::accessor acc_P {P, cgh, sycl::read_write};
+          sycl::accessor acc_P(P, cgh, sycl::read_write);
           cgh.single_task([=]() {
             sycl::id<1> tid = sycl::id<1>(0);
             make_ring(ncache_lines, as, st, (char *)&acc_P[0], tid);
@@ -142,29 +141,37 @@ int main() {
 
         // Zero the cycles
         long long int h_cycles = 0;
-        auto host_acc_d_cycles = sycl::host_accessor(d_cycles);
-        host_acc_d_cycles[0] = h_cycles;
-        // gpuQueue.memcpy(d_cycles, &h_cycles, sizeof(long long int));
+        {
+          sycl::accessor host_acc_d_cycles =
+              sycl::host_accessor(d_cycles, sycl::write_only);
+          host_acc_d_cycles[0] = h_cycles;
+        }
 
         // Perform the test
         START_PROFILING(&profile);
         for (size_t i = 0; i < NOUTER_ITERS; ++i) {
-          gpuQueue.submit([&](sycl::handler &cgh) {
-            sycl::accessor acc_P {P, cgh, sycl::read_write};
-            sycl::accessor acc_dummy {dummy, cgh, sycl::read_write};
-            sycl::accessor acc_d_cycles {d_cycles, cgh, sycl::read_write};
+          gpuQueue
+              .submit([&](sycl::handler &cgh) {
+                sycl::accessor acc_P(P, cgh, sycl::read_write);
+                sycl::accessor acc_dummy(dummy, cgh, sycl::read_write);
+                sycl::accessor acc_d_cycles(d_cycles, cgh, sycl::read_write);
 
-            cgh.single_task([=]() {
-              sycl::id<1> tid = sycl::id<1>(0);
-              lat(ncache_lines, (char*) &acc_P[0], (char*) &acc_dummy[0], (long long int*)&acc_d_cycles[0], tid);
-            });
-          }).wait();
+                cgh.single_task([=]() {
+                  sycl::id<1> tid = sycl::id<1>(0);
+                  lat(ncache_lines, (char *)&acc_P[0], (char *)&acc_dummy[0],
+                      (long long int *)&acc_d_cycles[0], tid);
+                });
+              })
+              .wait();
         }
         STOP_PROFILING(&profile, "p");
 
         // Bring the cycle count back from the device
-        h_cycles = host_acc_d_cycles[0];
-        // gpuQueue.memcpy(&h_cycles, d_cycles, sizeof(long long int));
+        {
+          sycl::accessor host_acc_d_cycles =
+              sycl::host_accessor(d_cycles, sycl::read_only);
+          h_cycles = host_acc_d_cycles[0];
+        }
 
         std::cout << "Elapsed Clock Cycles " << h_cycles << std::endl;
 
@@ -191,8 +198,11 @@ int main() {
 #endif
 
         h_cycles = 0;
-        host_acc_d_cycles[0] = h_cycles;
-        // gpuQueue.memcpy(d_cycles, &h_cycles, sizeof(long long int));
+        {
+          sycl::accessor host_acc_d_cycles =
+              sycl::host_accessor(d_cycles, sycl::write_only);
+          host_acc_d_cycles[0] = h_cycles;
+        }
 
         pe->time = 0.0;
       }
@@ -200,7 +210,6 @@ int main() {
 
     fclose(nfp);
     fclose(fp);
-    // sycl::free(P, gpuQueue);
   } catch (sycl::exception &e) {
     /* handle SYCL exception */
     std::cout << e.what() << std::endl;
