@@ -5,15 +5,15 @@ gpu:
 	nvcc -O3 -arch=sm_35 $(NVOPTS) -DENABLE_PROFILING -c gpu.cu -o obj_gpu.o
 	nvcc -O3 -arch=sm_35 obj_gpu.o profiler.o -lrt -o run.gpu
 
-sycl:
+sycl-usm:
 	icx -O3 -std=gnu99 -c profiler.c -o profiler.o
-	icpx -O3 -fsycl -DENABLE_PROFILING -c sycl.cpp -o obj_sycl.o
+	icpx -O3 -fsycl -DENABLE_PROFILING -c sycl-usm.cpp -o obj_sycl.o
 	icpx -O3 -fsycl obj_sycl.o profiler.o -o run.sycl
 
 sycl-acc:
 	icx -O3 -std=gnu99 -c profiler.c -o profiler.o
 	icpx -O3 -fsycl -DENABLE_PROFILING -c sycl-acc.cpp -o obj_sycl.o
-	icpx -O3 -fsycl obj_sycl.o profiler.o -o run.sycl-acc
+	icpx -O3 -fsycl obj_sycl.o profiler.o -o run.sycl
 
 cpu:
 	icc -O3 -std=gnu99 -c profiler.c -o profiler.o
