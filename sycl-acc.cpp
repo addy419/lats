@@ -136,7 +136,7 @@ int main() {
             sycl::id<1> tid = sycl::id<1>(0);
             make_ring(ncache_lines, as, st, (char *)&acc_P[0], tid);
           });
-        });
+        }).wait();
 #endif
 
         // Zero the cycles

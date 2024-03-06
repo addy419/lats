@@ -139,12 +139,12 @@ int main() {
             sycl::id<1> tid = sycl::id<1>(0);
             make_ring(ncache_lines, as, st, P, tid);
           });
-        });
+        }).wait();
 #endif
 
         // Zero the cycles
         long long int h_cycles = 0;
-        gpuQueue.memcpy(d_cycles, &h_cycles, sizeof(long long int));
+        gpuQueue.memcpy(d_cycles, &h_cycles, sizeof(long long int)).wait();
 
         // Perform the test
         START_PROFILING(&profile);
@@ -159,7 +159,7 @@ int main() {
         STOP_PROFILING(&profile, "p");
 
         // Bring the cycle count back from the device
-        gpuQueue.memcpy(&h_cycles, d_cycles, sizeof(long long int));
+        gpuQueue.memcpy(&h_cycles, d_cycles, sizeof(long long int)).wait();
 
         std::cout << "Elapsed Clock Cycles " << h_cycles << std::endl;
 
@@ -186,7 +186,7 @@ int main() {
 #endif
 
         h_cycles = 0;
-        gpuQueue.memcpy(d_cycles, &h_cycles, sizeof(long long int));
+        gpuQueue.memcpy(d_cycles, &h_cycles, sizeof(long long int)).wait();
 
         pe->time = 0.0;
       }
