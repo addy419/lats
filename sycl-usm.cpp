@@ -124,9 +124,9 @@ int main() {
     long long int *d_cycles;
     long long int *d_cycles_dummy;
     d_cycles =
-        sycl::malloc_device<long long int>(sizeof(long long int), gpuQueue);
+        sycl::malloc_device<long long int>(1, gpuQueue);
     d_cycles_dummy =
-        sycl::malloc_device<long long int>(sizeof(long long int), gpuQueue);
+        sycl::malloc_device<long long int>(1, gpuQueue);
 
     for (size_t st = STRIDE_START; st <= STRIDE_END; ++st) {
       for (size_t as = ALLOCATION_START; as <= ALLOCATION_END; as *= 2L) {

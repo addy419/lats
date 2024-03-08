@@ -120,9 +120,9 @@ int main() {
     FILE *fp = fopen("lat.csv", "a");
 
     sycl::buffer<long long int, 1> d_cycles(
-        sycl::range<1>(sizeof(long long int)));
+        sycl::range<1>(1));
     sycl::buffer<long long int, 1> d_cycles_dummy(
-        sycl::range<1>(sizeof(long long int)));
+        sycl::range<1>(1));
 
     for (size_t st = STRIDE_START; st <= STRIDE_END; ++st) {
       for (size_t as = ALLOCATION_START; as <= ALLOCATION_END; as *= 2L) {
