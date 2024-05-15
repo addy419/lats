@@ -12,7 +12,7 @@
 #define STRIDE_START 5L
 #define STRIDE_END 5L
 #define ALLOCATION_START (512L)
-#define ALLOCATION_END (512L * MiB)
+#define ALLOCATION_END (4L * GiB)
 
 #define MEM_LD_LATENCY
 // #define INST_LATENCY
@@ -172,7 +172,7 @@ int main() {
         double loads_s = loads / pe->time;
         double cycles_s = 1.48 * GHz;
         double cycles_load2 = (double)(cycles_s / loads_s);
-        printf("Loads = %lu\n", loads);
+        std::cout << "Loads = " << loads << std::endl;
         printf("Cycles / Load = %.4f\n", cycles_load);
         // printf("backup = %.4f\n", cycles_load2);
         fprintf(fp, "%d,%lu,%.4f\n", (int)st, as, cycles_load);
