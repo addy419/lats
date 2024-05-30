@@ -1,18 +1,20 @@
-#include <iostream>
-#include <sycl/sycl.hpp>
 #include "profiler.h"
+#include <iostream>
+#include <limits>
+#include <sycl/sycl.hpp>
 
 #define KiB 1024
 #define MiB (KiB * KiB)
 #define GiB (KiB * KiB * KiB)
 #define GHz (1000L * 1000L * 1000L)
 #define NOUTER_ITERS 1L
-#define NINNER_ITERS 50L
+#define NINNER_ITERS 10L
 #define CACHE_LINE_LENGTH 128L
 #define STRIDE_START 5L
 #define STRIDE_END 5L
 #define ALLOCATION_START (512L)
 #define ALLOCATION_END (4L * GiB)
+#define SIMD_SIZE 32
 
 #define MEM_LD_LATENCY
 // #define INST_LATENCY
@@ -23,15 +25,18 @@ intel_get_cycle_counter(void);
 #endif
 
 void lat(const size_t ncache_lines, char *P, char *dummy, long long int *cycles,
-         sycl::id<1> tid) {
-  const size_t gid = tid[0];
-  if (gid > 0) {
+         sycl::nd_item<1> it) {
+  auto sg = it.get_sub_group();
+  int groupId = sg.get_group_id()[0];
+  int sgId = sg.get_local_id()[0];
+
+  if (groupId > 0) {
     return;
   }
 
 #if defined(MEM_LD_LATENCY)
 
-  char **p0 = (char **)P;
+  char **p0 = (char **)&P[sgId];
 
   // Warmup
   for (size_t n = 0; n < ncache_lines; ++n) {
@@ -42,11 +47,12 @@ void lat(const size_t ncache_lines, char *P, char *dummy, long long int *cycles,
   ulong t0 = intel_get_cycle_counter();
 #endif
 
-  char **p1 = (char **)P;
+  char **p1 = (char **)&P[sgId];
 
 #pragma unroll 64
   for (size_t n = 0; n < ncache_lines * NINNER_ITERS; ++n) {
     p1 = (char **)*p1;
+    sg.barrier();
   }
 
   *dummy = *(char *)p0 + *(char *)p1;
@@ -77,22 +83,26 @@ void lat(const size_t ncache_lines, char *P, char *dummy, long long int *cycles,
 #endif
 
 #ifdef __SYCL_DEVICE_ONLY__
-  *cycles += intel_get_cycle_counter() - t0;
+  *cycles = intel_get_cycle_counter() - t0;
 #endif
+  sycl::reduce_over_group(sg, *cycles, sycl::minimum<>());
 }
 
 void make_ring(const size_t ncache_lines, const size_t as, const size_t st,
-               char *P, sycl::id<1> tid) {
-  const size_t gid = tid[0];
+               char *P, sycl::nd_item<1> it) {
+  auto sg = it.get_sub_group();
+  int groupId = sg.get_group_id()[0];
+  int sgId = sg.get_local_id()[0];
 
-  if (gid > 0) {
+  if (groupId > 0) {
     return;
   }
 
   // Create a ring of pointers at the cache line granularity
   for (size_t i = 0; i < ncache_lines; ++i) {
-    *(char **)&P[(i * CACHE_LINE_LENGTH)] =
-        &P[((i + st) * CACHE_LINE_LENGTH) % as];
+    *(char **)&P[(i * CACHE_LINE_LENGTH) + sgId] =
+        &P[((((i + st) * CACHE_LINE_LENGTH) + sgId) % as)];
+    sg.barrier();
   }
 }
 
@@ -123,10 +133,8 @@ int main() {
 
     long long int *d_cycles;
     long long int *d_cycles_dummy;
-    d_cycles =
-        sycl::malloc_device<long long int>(1, gpuQueue);
-    d_cycles_dummy =
-        sycl::malloc_device<long long int>(1, gpuQueue);
+    d_cycles = sycl::malloc_device<long long int>(1, gpuQueue);
+    d_cycles_dummy = sycl::malloc_device<long long int>(1, gpuQueue);
 
     for (size_t st = STRIDE_START; st <= STRIDE_END; ++st) {
       for (size_t as = ALLOCATION_START; as <= ALLOCATION_END; as *= 2L) {
@@ -134,27 +142,32 @@ int main() {
         const size_t ncache_lines = as / CACHE_LINE_LENGTH;
 
 #if defined(MEM_LD_LATENCY)
-        gpuQueue.submit([&](sycl::handler &cgh) {
-          cgh.single_task([=]() {
-            sycl::id<1> tid = sycl::id<1>(0);
-            make_ring(ncache_lines, as, st, P, tid);
-          });
-        }).wait();
+        gpuQueue
+            .submit([&](sycl::handler &cgh) {
+              cgh.parallel_for(sycl::nd_range(sycl::range{SIMD_SIZE}, sycl::range{SIMD_SIZE}),
+              [=](sycl::nd_item<1> it) {
+                make_ring(ncache_lines, as, st, P, it);
+              });
+            })
+            .wait();
 #endif
 
-        // Zero the cycles
-        long long int h_cycles = 0;
+        // Max the cycles
+        long long int h_cycles = std::numeric_limits<long long int>::max();;
         gpuQueue.memcpy(d_cycles, &h_cycles, sizeof(long long int)).wait();
 
         // Perform the test
         START_PROFILING(&profile);
         for (size_t i = 0; i < NOUTER_ITERS; ++i) {
-          gpuQueue.submit([&](sycl::handler &cgh) {
-            cgh.single_task([=]() {
-              sycl::id<1> tid = sycl::id<1>(0);
-              lat(ncache_lines, P, dummy, d_cycles, tid);
-            });
-          }).wait();
+          gpuQueue
+              .submit([&](sycl::handler &cgh) {
+                cgh.parallel_for(
+                    sycl::nd_range(sycl::range{SIMD_SIZE}, sycl::range{SIMD_SIZE}),
+                    [=](sycl::nd_item<1> it) {
+                      lat(ncache_lines, P, dummy, d_cycles, it);
+                    });
+              })
+              .wait();
         }
         STOP_PROFILING(&profile, "p");
 
@@ -165,7 +178,7 @@ int main() {
 
 #if defined(MEM_LD_LATENCY)
 
-        double loads = (double)NOUTER_ITERS * ncache_lines * NINNER_ITERS;
+        double loads = (double)NOUTER_ITERS * ncache_lines * NINNER_ITERS * SIMD_SIZE;
         double cycles_load = ((double)h_cycles / loads);
         printf("Array Size %.3fMB Stride %d Cache Lines %d Time %.12fs\n",
                (double)as / MiB, (int)st, (int)ncache_lines, pe->time);
