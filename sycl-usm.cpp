@@ -52,7 +52,7 @@ void lat(const size_t ncache_lines, float *P, float *dummy, long long int *cycle
 #pragma unroll 64
   for (size_t n = 0; n < ncache_lines * NINNER_ITERS; ++n) {
     p1 = (float **)*p1;
-    sg.barrier();
+    // sg.barrier();
   }
 
   *dummy = *(float *)p0 + *(float *)p1;
@@ -102,7 +102,7 @@ void make_ring(const size_t ncache_lines, const size_t as, const size_t st,
   for (size_t i = 0; i < ncache_lines; ++i) {
     *(float **)&P[(i * CACHE_LINE_LENGTH) + sgId] =
         &P[((((i + st) * CACHE_LINE_LENGTH) + sgId) % as)];
-    sg.barrier();
+    // sg.barrier();
   }
 }
 
@@ -126,7 +126,6 @@ int main() {
     size_t unitsize = sizeof(float);
     long int alloc_start_units = ALLOCATION_START / unitsize;
     long int alloc_end_units = ALLOCATION_END / unitsize;
-    std::cout << alloc_start_units << std::endl;
     P = sycl::malloc_device<float>(alloc_end_units, gpuQueue);
     dummy = sycl::malloc_device<float>(1, gpuQueue);
     std::cout << "Allocating " << ALLOCATION_END / MiB << " MiB\n";
@@ -149,7 +148,8 @@ int main() {
         gpuQueue
             .submit([&](sycl::handler &cgh) {
               cgh.parallel_for(sycl::nd_range(sycl::range{SIMD_SIZE}, sycl::range{SIMD_SIZE}),
-              [=](sycl::nd_item<1> it) {
+              [=](sycl::nd_item<1> it)
+              [[intel::reqd_sub_group_size(SIMD_SIZE)]] {
                 make_ring(ncache_lines, as, st, P, it);
               });
             })
@@ -167,7 +167,8 @@ int main() {
               .submit([&](sycl::handler &cgh) {
                 cgh.parallel_for(
                     sycl::nd_range(sycl::range{SIMD_SIZE}, sycl::range{SIMD_SIZE}),
-                    [=](sycl::nd_item<1> it) {
+                    [=](sycl::nd_item<1> it) 
+                    [[intel::reqd_sub_group_size(SIMD_SIZE)]] {
                       lat(ncache_lines, P, dummy, d_cycles, it);
                     });
               })
@@ -182,7 +183,7 @@ int main() {
 
 #if defined(MEM_LD_LATENCY)
 
-        double loads = (double)NOUTER_ITERS * ncache_lines * NINNER_ITERS * SIMD_SIZE;
+        double loads = (double)NOUTER_ITERS * ncache_lines * NINNER_ITERS;
         double cycles_load = ((double)h_cycles / loads);
         printf("Array Size %.3fMB Stride %d Cache Lines %d Time %.12fs\n",
                (double)as * unitsize / MiB, (int)st, (int)ncache_lines, pe->time);
