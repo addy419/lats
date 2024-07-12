@@ -20,15 +20,6 @@
 //#define INST_LATENCY
 
 
-__inline__ __device__ long long int warpReduceMin(long long int val) {
-    // Full warp mask
-
-    // Perform reduction within a warp
-
-    return val;
-}
-
-
 __global__ void lat(const size_t ncache_lines, char* P, char* dummy, long long int* cycles)
 {
   const size_t gid = blockDim.x*blockIdx.x+threadIdx.x;
