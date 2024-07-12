@@ -12,7 +12,7 @@
 #define CACHE_LINE_LENGTH 128L
 #define STRIDE_START 5L
 #define STRIDE_END 5L
-#define ALLOCATION_START (16L * KiB)
+#define ALLOCATION_START (512L)
 #define ALLOCATION_END (4L * GiB)
 #define SIMD_SIZE 32
 
@@ -24,7 +24,7 @@ extern SYCL_EXTERNAL ulong __attribute__((overloadable))
 intel_get_cycle_counter(void);
 #endif
 
-void lat(const size_t ncache_lines, float *P, float *dummy, long long int *cycles,
+void lat(const size_t ncache_lines, char *P, char *dummy, long long int *cycles,
          sycl::nd_item<1> it) {
   auto sg = it.get_sub_group();
   int groupId = sg.get_group_id()[0];
@@ -36,26 +36,26 @@ void lat(const size_t ncache_lines, float *P, float *dummy, long long int *cycle
 
 #if defined(MEM_LD_LATENCY)
 
-  float **p0 = (float **)&P[sgId];
+  char **p0 = (char **)&P[sgId];
 
   // Warmup
   for (size_t n = 0; n < ncache_lines; ++n) {
-    p0 = (float **)*p0;
+    p0 = (char **)*p0;
   }
 
 #ifdef __SYCL_DEVICE_ONLY__
   ulong t0 = intel_get_cycle_counter();
 #endif
 
-  float **p1 = (float **)&P[sgId];
+  char **p1 = (char **)&P[sgId];
 
 #pragma unroll 64
   for (size_t n = 0; n < ncache_lines * NINNER_ITERS; ++n) {
-    p1 = (float **)*p1;
-    // sg.barrier();
+    p1 = (char **)*p1;
+    //sg.barrier();
   }
 
-  *dummy = *(float *)p0 + *(float *)p1;
+  *dummy = *(char *)p0 + *(char *)p1;
 
 #elif defined(INST_LATENCY)
 
@@ -78,7 +78,7 @@ void lat(const size_t ncache_lines, float *P, float *dummy, long long int *cycle
   printf("%.7f\n", a);
 #endif // if 0
 
-  *dummy = (float)a;
+  *dummy = (char)a;
 
 #endif
 
@@ -89,7 +89,7 @@ void lat(const size_t ncache_lines, float *P, float *dummy, long long int *cycle
 }
 
 void make_ring(const size_t ncache_lines, const size_t as, const size_t st,
-               float *P, sycl::nd_item<1> it) {
+               char *P, sycl::nd_item<1> it) {
   auto sg = it.get_sub_group();
   int groupId = sg.get_group_id()[0];
   int sgId = sg.get_local_id()[0];
@@ -100,7 +100,7 @@ void make_ring(const size_t ncache_lines, const size_t as, const size_t st,
 
   // Create a ring of pointers at the cache line granularity
   for (size_t i = 0; i < ncache_lines; ++i) {
-    *(float **)&P[(i * CACHE_LINE_LENGTH) + sgId] =
+    *(char **)&P[(i * CACHE_LINE_LENGTH) + sgId] =
         &P[((((i + st) * CACHE_LINE_LENGTH) + sgId) % as)];
     // sg.barrier();
   }
@@ -121,13 +121,10 @@ int main() {
               << "\n";
 
     // Initialise
-    float *P;
-    float *dummy;
-    size_t unitsize = sizeof(float);
-    long int alloc_start_units = ALLOCATION_START / unitsize;
-    long int alloc_end_units = ALLOCATION_END / unitsize;
-    P = sycl::malloc_device<float>(alloc_end_units, gpuQueue);
-    dummy = sycl::malloc_device<float>(1, gpuQueue);
+    char *P;
+    char *dummy;
+    P = sycl::malloc_device<char>(ALLOCATION_END, gpuQueue);
+    dummy = sycl::malloc_device<char>(1, gpuQueue);
     std::cout << "Allocating " << ALLOCATION_END / MiB << " MiB\n";
 
     // Open files
@@ -140,7 +137,7 @@ int main() {
     d_cycles_dummy = sycl::malloc_device<long long int>(1, gpuQueue);
 
     for (size_t st = STRIDE_START; st <= STRIDE_END; ++st) {
-      for (size_t as = alloc_start_units; as <= alloc_end_units; as *= 2L) {
+      for (size_t as = ALLOCATION_START; as <= ALLOCATION_END; as *= 2L) {
 
         const size_t ncache_lines = as / CACHE_LINE_LENGTH;
 
@@ -186,14 +183,14 @@ int main() {
         double loads = (double)NOUTER_ITERS * ncache_lines * NINNER_ITERS;
         double cycles_load = ((double)h_cycles / loads);
         printf("Array Size %.3fMB Stride %d Cache Lines %d Time %.12fs\n",
-               (double)as * unitsize / MiB, (int)st, (int)ncache_lines, pe->time);
-        // double loads_s = loads / pe->time;
-        // double cycles_s = 1.48 * GHz;
-        // double cycles_load2 = (double)(cycles_s / loads_s);
+               (double)as / MiB, (int)st, (int)ncache_lines, pe->time);
+        double loads_s = loads / pe->time;
+        double cycles_s = 1.48 * GHz;
+        double cycles_load2 = (double)(cycles_s / loads_s);
         std::cout << "Loads = " << loads << std::endl;
         printf("Cycles / Load = %.4f\n", cycles_load);
         // printf("backup = %.4f\n", cycles_load2);
-        fprintf(fp, "%d,%lu,%.4f\n", (int)st, as * unitsize, cycles_load);
+        fprintf(fp, "%d,%lu,%.4f\n", (int)st, as, cycles_load);
 
 #elif defined(INST_LATENCY)
 
