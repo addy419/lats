@@ -13,21 +13,33 @@
 #define STRIDE_START 5L
 #define STRIDE_END 5L
 #define ALLOCATION_START (512L)
-#define ALLOCATION_END (512L*MiB)
+#define ALLOCATION_END (512L * MiB)
+#define SIMD_SIZE 16
 
 #define MEM_LD_LATENCY
 //#define INST_LATENCY
 
+
+__inline__ __device__ long long int warpReduceMin(long long int val) {
+    // Full warp mask
+
+    // Perform reduction within a warp
+
+    return val;
+}
+
+
 __global__ void lat(const size_t ncache_lines, char* P, char* dummy, long long int* cycles)
 {
   const size_t gid = blockDim.x*blockIdx.x+threadIdx.x;
-  if(gid > 0) {
+  if(gid > warpSize) {
     return;
   }
 
+
 #if defined(MEM_LD_LATENCY)
 
-  char** p0 = (char**)P;
+  char** p0 = (char**)&P[gid*8];
 
   // Warmup
   for(size_t n = 0; n < ncache_lines; ++n) {
@@ -36,7 +48,7 @@ __global__ void lat(const size_t ncache_lines, char* P, char* dummy, long long i
 
   long long int t0 = clock64();
 
-  char** p1 = (char**)P;
+  char** p1 = (char**)&P[gid*8];
 
 #pragma unroll 64
   for(size_t n = 0; n < ncache_lines*NINNER_ITERS; ++n) {
@@ -68,19 +80,28 @@ __global__ void lat(const size_t ncache_lines, char* P, char* dummy, long long i
 
 #endif
 
-  *cycles += clock64()-t0;
+  long long int t1 = clock64()-t0;
+
+  unsigned mask = 0xFFFFFFFF;
+  for (int offset = SIMD_SIZE / 2; offset > 0; offset /= 2) {
+      t1 = min(t1, __shfl_down_sync(mask, t1, offset));
+  }
+
+  if(gid == 0) {
+    *cycles += t1;
+  }
 }
 
 __global__ void make_ring(const size_t ncache_lines, const size_t as, const size_t st, char* P)
 {
   const size_t gid = blockDim.x*blockIdx.x+threadIdx.x;
-  if(gid > 0) {
+  if(gid > warpSize) {
     return;
   }
 
   // Create a ring of pointers at the cache line granularity
   for(size_t i = 0; i < ncache_lines; ++i) {
-    *(char**)&P[(i*CACHE_LINE_LENGTH)] = &P[((i+st)*CACHE_LINE_LENGTH)%as];
+    *(char**)&P[(i*CACHE_LINE_LENGTH)+(gid*8)] = &P[(((i+st)*CACHE_LINE_LENGTH)+(gid*8))%as];
   }
 }
 
@@ -112,7 +133,7 @@ int main() {
       const size_t ncache_lines = as/CACHE_LINE_LENGTH;
 
 #if defined(MEM_LD_LATENCY)
-      make_ring<<<1,1>>>(ncache_lines, as, st, P);
+      make_ring<<<1,SIMD_SIZE>>>(ncache_lines, as, st, P);
 #endif
 
       // Zero the cycles
@@ -122,7 +143,7 @@ int main() {
       // Perform the test
       START_PROFILING(&profile);
       for(size_t i = 0; i < NOUTER_ITERS; ++i) {
-        lat<<<1,1>>>(ncache_lines, P, dummy, d_cycles);
+        lat<<<1,SIMD_SIZE>>>(ncache_lines, P, dummy, d_cycles);
       }
       cudaDeviceSynchronize();
       STOP_PROFILING(&profile, "p");

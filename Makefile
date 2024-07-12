@@ -1,9 +1,10 @@
-NVOPTS = --use_fast_math #-ptx
+OPTS=-Xlinker -z,noexecstack
+ARCH=sm_75
 
-gpu:
-	gcc -O3 -std=gnu99 -c profiler.c -o profiler.o
-	nvcc -O3 -arch=sm_35 $(NVOPTS) -DENABLE_PROFILING -c gpu.cu -o obj_gpu.o
-	nvcc -O3 -arch=sm_35 obj_gpu.o profiler.o -lrt -o run.gpu
+cuda:
+	nvc -O3 -std=gnu99 -c profiler.c -o profiler.o
+	nvc++ -O3 -cuda -gpu=$(ARCH) -fast -DENABLE_PROFILING -c cuda.cpp -o obj_gpu.o
+	nvc++ -O3 -cuda -gpu=$(ARCH) $(OPTS) obj_gpu.o profiler.o -lrt -o run.cuda
 
 sycl-usm:
 	icx -O3 -std=gnu99 -c profiler.c -o profiler.o
