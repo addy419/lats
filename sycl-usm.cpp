@@ -14,7 +14,7 @@
 #define STRIDE_END 5L
 #define ALLOCATION_START (512L)
 #define ALLOCATION_END (4L * GiB)
-#define SIMD_SIZE 32
+#define SIMD_SIZE 16
 
 #define MEM_LD_LATENCY
 // #define INST_LATENCY
@@ -36,7 +36,7 @@ void lat(const size_t ncache_lines, char *P, char *dummy, long long int *cycles,
 
 #if defined(MEM_LD_LATENCY)
 
-  char **p0 = (char **)&P[sgId];
+  char **p0 = (char **)&P[sgId * 8];
 
   // Warmup
   for (size_t n = 0; n < ncache_lines; ++n) {
@@ -47,7 +47,7 @@ void lat(const size_t ncache_lines, char *P, char *dummy, long long int *cycles,
   ulong t0 = intel_get_cycle_counter();
 #endif
 
-  char **p1 = (char **)&P[sgId];
+  char **p1 = (char **)&P[sgId * 8];
 
 #pragma unroll 64
   for (size_t n = 0; n < ncache_lines * NINNER_ITERS; ++n) {
@@ -100,8 +100,8 @@ void make_ring(const size_t ncache_lines, const size_t as, const size_t st,
 
   // Create a ring of pointers at the cache line granularity
   for (size_t i = 0; i < ncache_lines; ++i) {
-    *(char **)&P[(i * CACHE_LINE_LENGTH) + sgId] =
-        &P[((((i + st) * CACHE_LINE_LENGTH) + sgId) % as)];
+    *(char **)&P[(i * CACHE_LINE_LENGTH) + (sgId * 8)] =
+        &P[((((i + st) * CACHE_LINE_LENGTH) + (sgId * 8)) % as)];
     // sg.barrier();
   }
 }
