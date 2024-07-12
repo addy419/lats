@@ -1,5 +1,4 @@
 OPTS=-Xlinker -z,noexecstack
-ARCH=$ARCH
 
 cuda:
 	nvc -O3 -std=gnu99 -c profiler.c -o profiler.o
@@ -7,9 +6,9 @@ cuda:
 	nvc++ -O3 -cuda -gpu=$(ARCH) $(OPTS) obj_gpu.o profiler.o -lrt -o run.cuda
 
 hip:
-	hipcc -O3 -std=gnu99 -c profiler.c -o profiler.o
-	hpicc -O3 -fast -DENABLE_PROFILING -c cuda.cpp -o obj_gpu.o
-	hpicc -O3 obj_gpu.o profiler.o -o run.cuda
+	gcc -O3 -std=gnu99 -c profiler.c -o profiler.o
+	hipcc -O3 $(HIPOPTS) -DENABLE_PROFILING -c hip.cpp -o obj_gpu.o
+	hipcc -O3 $(HIPOPTS) obj_gpu.o profiler.o -o run.hip
 
 sycl-usm:
 	icx -O3 -std=gnu99 -c profiler.c -o profiler.o

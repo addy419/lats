@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <iostream>
 #include "profiler.h"
 
 #define KiB 1024
@@ -76,7 +77,7 @@ __global__ void lat(const size_t ncache_lines, char* P, char* dummy, long long i
 
   unsigned mask = 0xFFFFFFFF;
   for (int offset = SIMD_SIZE / 2; offset > 0; offset /= 2) {
-      t1 = min(t1, __shfl_down_sync(mask, t1, offset));
+      t1 = min(t1, __shfl_down(t1, offset));
   }
 
   if(gid == 0) {
@@ -143,21 +144,20 @@ int main() {
       // Bring the cycle count back from the device
       hipMemcpy(&h_cycles, d_cycles, sizeof(long long int), hipMemcpyDeviceToHost);
 
-      printf("Elapsed Clock Cycles %lu\n", h_cycles);
+      std::cout << "Elapsed Clock Cycles " << h_cycles << std::endl;
 
 #if defined(MEM_LD_LATENCY)
 
       double loads = (double)NOUTER_ITERS*ncache_lines*NINNER_ITERS;
       double cycles_load = ((double)h_cycles/loads);
-      printf("Array Size %.3fMB Stride %d Cache Lines %d Time %.12fs\n", 
-          (double)as/MiB, st, ncache_lines, pe->time);
+      std::cout << "Array Size " << (double)as/MiB << "MB Stride " << st << " Cache Lines " << ncache_lines << " Time " << pe->time << std::endl;
       double loads_s = loads / pe->time;
       double cycles_s = 1.48*GHz;
       double cycles_load2 = (double)(cycles_s / loads_s);
-      printf("Loads = %lu\n", loads);
-      printf("Cycles / Load = %.4f\n", cycles_load);
+      printf("Loads = %lu\n", (ulong)loads);
+      std::cout << "Cycles / Load = " << cycles_load << std::endl;
       //printf("backup = %.4f\n", cycles_load2);
-      fprintf(fp, "%d,%lu,%.4f\n", st, as, cycles_load);
+      fprintf(fp, "%lu,%lu,%.4f\n", st, as, cycles_load);
 
 #elif defined(INST_LATENCY)
 
