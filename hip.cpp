@@ -15,7 +15,7 @@
 #define STRIDE_START 5L
 #define STRIDE_END 5L
 #define ALLOCATION_START (512L)
-#define ALLOCATION_END (512L * MiB)
+#define ALLOCATION_END (4L * GiB)
 #define SIMD_SIZE 16
 
 #define MEM_LD_LATENCY
